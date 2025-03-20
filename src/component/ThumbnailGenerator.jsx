@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { RotateCw, ImagePlus, X, Info } from 'lucide-react';
+import { RotateCw, ImagePlus, X, Info, ZoomIn, Maximize2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // Simplified versions of the missing UI components
@@ -115,10 +115,15 @@ const useThumbnailGenerator = () => {
 const ThumbnailGenerator = () => {
     const { state, handleInputChange, generateThumbnail, resetForm } = useThumbnailGenerator();
     const { imageUrl, imageFile, loading, thumbnailUrl, originalImageUrl, error, metadata } = state;
-    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isOriginalModalOpen, setIsOriginalModalOpen] = useState(false);
+    const [isThumbnailModalOpen, setIsThumbnailModalOpen] = useState(false);
 
-    const toggleModal = () => {
-        setIsModalOpen(!isModalOpen);
+    const toggleOriginalModal = () => {
+        setIsOriginalModalOpen(!isOriginalModalOpen);
+    };
+
+    const toggleThumbnailModal = () => {
+        setIsThumbnailModalOpen(!isThumbnailModalOpen);
     };
 
     const renderMetadata = (data) => {
@@ -126,9 +131,21 @@ const ThumbnailGenerator = () => {
             return <p className="text-gray-400">No metadata available.</p>;
         }
 
+        // Sort metadata to show important info first
+        const sortedEntries = Object.entries(data).sort(([keyA], [keyB]) => {
+            const priorityKeys = ['originalSize', 'thumbnailSize', 'originalWidth', 'originalHeight', 'aspectRatio'];
+            const priorityA = priorityKeys.indexOf(keyA);
+            const priorityB = priorityKeys.indexOf(keyB);
+            
+            if (priorityA !== -1 && priorityB !== -1) return priorityA - priorityB;
+            if (priorityA !== -1) return -1;
+            if (priorityB !== -1) return 1;
+            return keyA.localeCompare(keyB);
+        });
+
         return (
             <div className="space-y-2">
-                {Object.entries(data).map(([key, value]) => (
+                {sortedEntries.map(([key, value]) => (
                     <div key={key} className="grid grid-cols-2 gap-4">
                         <span className="text-gray-300 font-medium break-words">{key}:</span>
                         <span className="text-gray-200 break-words">{String(value)}</span>
@@ -238,36 +255,69 @@ const ThumbnailGenerator = () => {
                             exit={{ opacity: 0, y: -20 }}
                             className="mt-8 space-y-6"
                         >
+                            {/* Thumbnail with 150x150 border to show exact dimensions */}
                             <div className="text-center">
                                 <h2 className="text-2xl font-semibold text-gray-200 mb-4 flex items-center justify-center gap-2">
                                     <ImagePlus className="w-6 h-6" />
                                     Thumbnail Preview (150×150)
                                 </h2>
                                 <div className="flex justify-center">
-                                    <img
-                                        src={thumbnailUrl}
-                                        alt="Generated Thumbnail"
-                                        className="max-w-full h-auto rounded-xl shadow-2xl border border-gray-700 transition-transform duration-300 hover:scale-105"
-                                    />
+                                    <div className="relative inline-block">
+                                        <div className="h-[150px] w-[150px] flex items-center justify-center border-2 border-blue-500 rounded-xl overflow-hidden group">
+                                            <img
+                                                src={thumbnailUrl}
+                                                alt="Generated Thumbnail"
+                                                className="max-w-full max-h-full transition-transform duration-300 group-hover:scale-105"
+                                            />
+                                            <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all duration-300 flex items-center justify-center opacity-0 group-hover:opacity-100">
+                                                <Button
+                                                    onClick={toggleThumbnailModal}
+                                                    className="bg-black bg-opacity-60 text-white p-2 rounded-full"
+                                                >
+                                                    <ZoomIn className="w-6 h-6" />
+                                                </Button>
+                                            </div>
+                                        </div>
+                                        <div className="absolute -top-2 -right-2 bg-blue-500 text-xs text-white px-2 py-1 rounded-full">
+                                            150×150
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
+                            
+                            {/* Original Image with click to zoom */}
                             {originalImageUrl && (
                                 <div className="text-center">
                                     <h2 className="text-2xl font-semibold text-gray-200 mb-4 flex items-center justify-center gap-2">
                                         <ImagePlus className="w-6 h-6" />
                                         Original Image
+                                        {metadata && metadata.originalSize && (
+                                            <span className="text-sm bg-gray-700 px-3 py-1 rounded-full ml-2">
+                                                {metadata.originalSize}
+                                            </span>
+                                        )}
                                     </h2>
-                                    <div
-                                        className="flex justify-center cursor-pointer"
-                                        onClick={toggleModal}
-                                        title="Click to view original image"
-                                    >
-                                        <img
-                                            src={originalImageUrl}
-                                            alt="Original"
-                                            className="max-w-full h-auto rounded-xl shadow-xl border border-gray-700 transition-transform duration-300 hover:scale-105"
-                                            style={{ maxHeight: '400px' }}
-                                        />
+                                    <div className="flex justify-center">
+                                        <div className="relative group max-w-md">
+                                            <img
+                                                src={originalImageUrl}
+                                                alt="Original"
+                                                className="max-w-full h-auto rounded-xl shadow-xl border border-gray-700 transition-transform duration-300 group-hover:scale-[1.02]"
+                                                style={{ maxHeight: '400px' }}
+                                            />
+                                            <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all duration-300 flex items-center justify-center opacity-0 group-hover:opacity-100 rounded-xl">
+                                                <Button
+                                                    onClick={toggleOriginalModal}
+                                                    className="bg-black bg-opacity-60 text-white p-3 rounded-full"
+                                                >
+                                                    <Maximize2 className="w-6 h-6" />
+                                                </Button>
+                                            </div>
+                                            <div className="absolute bottom-3 right-3 bg-black bg-opacity-70 text-white px-3 py-1 rounded-lg text-sm flex items-center gap-1">
+                                                <ZoomIn className="w-4 h-4" />
+                                                Click to view full size
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             )}
@@ -289,42 +339,90 @@ const ThumbnailGenerator = () => {
                 )}
             </div>
 
-            {/* Modal for Full-Size Image */}
+            {/* Modal for Original Image */}
             <AnimatePresence>
-                {isModalOpen && (
+                {isOriginalModalOpen && (
                     <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         transition={{ duration: 0.2 }}
-                        className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
-                        onClick={toggleModal}
+                        className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4"
+                        onClick={toggleOriginalModal}
                     >
                         <motion.div
                             initial={{ scale: 0.8 }}
                             animate={{ scale: 1 }}
                             exit={{ scale: 0.8 }}
                             transition={{ duration: 0.2 }}
-                            className="relative max-h-screen max-w-screen"
+                            className="relative max-h-screen max-w-screen overflow-auto"
                             onClick={(e) => e.stopPropagation()}
                         >
-                            <img
-                                src={originalImageUrl}
-                                alt="Full Size Original"
-                                className="rounded-xl shadow-2xl border border-gray-700"
-                                style={{ maxHeight: '90vh', maxWidth: '90vw' }}
-                            />
-                            <Button
-                                variant="ghost"
-                                onClick={toggleModal}
-                                className={cn(
-                                    "absolute top-4 right-4 bg-black/50 hover:bg-black/70 text-white rounded-full p-2",
-                                    "transition-colors duration-200 shadow-md"
-                                )}
-                                title="Close"
-                            >
-                                <X className="w-6 h-6" />
-                            </Button>
+                            <div className="relative">
+                                <img
+                                    src={originalImageUrl}
+                                    alt="Full Size Original"
+                                    className="rounded-xl shadow-2xl border border-gray-700"
+                                    style={{ maxHeight: '90vh', maxWidth: '90vw' }}
+                                />
+                                <div className="absolute top-4 left-4 bg-black bg-opacity-75 text-white px-3 py-1 rounded-lg z-10">
+                                    {metadata && metadata.originalSize ? (
+                                        <span>Original Size: {metadata.originalSize}</span>
+                                    ) : (
+                                        <span>Original Image</span>
+                                    )}
+                                </div>
+                                <Button
+                                    variant="ghost"
+                                    onClick={toggleOriginalModal}
+                                    className="absolute top-4 right-4 bg-black/70 hover:bg-black/90 text-white rounded-full p-2 transition-colors duration-200 shadow-md"
+                                    title="Close"
+                                >
+                                    <X className="w-6 h-6" />
+                                </Button>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Modal for Thumbnail */}
+            <AnimatePresence>
+                {isThumbnailModalOpen && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4"
+                        onClick={toggleThumbnailModal}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.8 }}
+                            animate={{ scale: 1 }}
+                            exit={{ scale: 0.8 }}
+                            transition={{ duration: 0.2 }}
+                            className="relative"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <div className="relative p-8 bg-gray-800/50 rounded-xl backdrop-blur-sm">
+                                <img
+                                    src={thumbnailUrl}
+                                    alt="Thumbnail Preview"
+                                    className="rounded-lg shadow-2xl border-2 border-blue-400"
+                                />
+                                <div className="absolute top-4 left-4 bg-blue-600 text-white px-3 py-1 rounded-lg z-10">
+                                    150×150 Thumbnail
+                                </div>
+                                <Button
+                                    variant="ghost"
+                                    onClick={toggleThumbnailModal}
+                                    className="absolute top-4 right-4 bg-black/70 hover:bg-black/90 text-white rounded-full p-2 transition-colors duration-200 shadow-md"
+                                    title="Close"
+                                >
+                                    <X className="w-6 h-6" />
+                                </Button>
+                            </div>
                         </motion.div>
                     </motion.div>
                 )}
