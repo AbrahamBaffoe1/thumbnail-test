@@ -25,8 +25,6 @@ const useThumbnailGenerator = () => {
     const [state, setState] = useState({
         imageUrl: '',
         imageFile: null,
-        width: 300,
-        height: 200,
         loading: false,
         thumbnailUrl: '',
         originalImageUrl: '',
@@ -47,7 +45,7 @@ const useThumbnailGenerator = () => {
 
     const generateThumbnail = useCallback(async () => {
         setState(prevState => ({ ...prevState, loading: true, error: '', metadata: null }));
-        const { imageUrl, imageFile, width, height } = state;
+        const { imageUrl, imageFile } = state;
 
         if (!imageUrl && !imageFile) {
             setState(prevState => ({ 
@@ -59,18 +57,12 @@ const useThumbnailGenerator = () => {
         }
 
         const formData = new FormData();
-        let originalImageURLToUse = '';
         
         if (imageFile) {
             formData.append('image', imageFile);
-            originalImageURLToUse = URL.createObjectURL(imageFile);
         } else if (imageUrl) {
             formData.append('imageUrl', imageUrl);
-            originalImageURLToUse = imageUrl;
         }
-        
-        formData.append('width', width.toString());
-        formData.append('height', height.toString());
 
         try {
             console.log('Sending request to:', BACKEND_URL);
@@ -86,15 +78,13 @@ const useThumbnailGenerator = () => {
             }
 
             const data = await response.json();
-            const { thumbnailUrl, metadata } = data;
-
-            console.log('Got response:', data);
+            const { thumbnailUrl, originalImageUrl, metadata } = data;
 
             setState(prevState => ({
                 ...prevState,
                 loading: false,
                 thumbnailUrl: thumbnailUrl,
-                originalImageUrl: originalImageURLToUse,
+                originalImageUrl: originalImageUrl || (imageFile ? URL.createObjectURL(imageFile) : imageUrl),
                 metadata,
             }));
         } catch (error) {
@@ -111,8 +101,6 @@ const useThumbnailGenerator = () => {
         setState({
             imageUrl: '',
             imageFile: null,
-            width: 300,
-            height: 200,
             loading: false,
             thumbnailUrl: '',
             originalImageUrl: '',
@@ -126,7 +114,7 @@ const useThumbnailGenerator = () => {
 
 const ThumbnailGenerator = () => {
     const { state, handleInputChange, generateThumbnail, resetForm } = useThumbnailGenerator();
-    const { imageUrl, imageFile, width, height, loading, thumbnailUrl, originalImageUrl, error, metadata } = state;
+    const { imageUrl, imageFile, loading, thumbnailUrl, originalImageUrl, error, metadata } = state;
     const [isModalOpen, setIsModalOpen] = useState(false);
 
     const toggleModal = () => {
@@ -156,6 +144,11 @@ const ThumbnailGenerator = () => {
                 <h1 className="text-4xl font-bold text-center bg-gradient-to-r from-blue-400 to-purple-500 text-transparent bg-clip-text">
                     Thumbnail Generator
                 </h1>
+                
+                <div className="text-center text-lg text-gray-300">
+                    <p>Generate perfect 150×150 thumbnails from any image.</p>
+                    <p className="text-sm mt-1 text-gray-400">Thumbnails are automatically resized and cropped to maintain perfect proportions.</p>
+                </div>
 
                 {/* Input Section */}
                 <div className="space-y-6">
@@ -188,31 +181,6 @@ const ThumbnailGenerator = () => {
                             className="bg-gray-800/80 border-gray-700 text-white file:bg-gray-700 file:text-gray-300 file:border-gray-600 file:rounded-md file:mr-6 file:px-5 file:py-3 text-base"
                             disabled={!!imageUrl}
                         />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-6">
-                        <div className="space-y-3">
-                            <Label htmlFor="width" className="text-gray-300 text-lg">Width</Label>
-                            <Input
-                                id="width"
-                                type="number"
-                                min="1"
-                                value={width}
-                                onChange={(e) => handleInputChange('width', parseInt(e.target.value, 10))}
-                                className="bg-gray-800/80 border-gray-700 text-white text-base"
-                            />
-                        </div>
-                        <div className="space-y-3">
-                            <Label htmlFor="height" className="text-gray-300 text-lg">Height</Label>
-                            <Input
-                                id="height"
-                                type="number"
-                                min="1"
-                                value={height}
-                                onChange={(e) => handleInputChange('height', parseInt(e.target.value, 10))}
-                                className="bg-gray-800/80 border-gray-700 text-white text-base"
-                            />
-                        </div>
                     </div>
                 </div>
 
@@ -273,7 +241,7 @@ const ThumbnailGenerator = () => {
                             <div className="text-center">
                                 <h2 className="text-2xl font-semibold text-gray-200 mb-4 flex items-center justify-center gap-2">
                                     <ImagePlus className="w-6 h-6" />
-                                    Thumbnail Preview
+                                    Thumbnail Preview (150×150)
                                 </h2>
                                 <div className="flex justify-center">
                                     <img

@@ -54,19 +54,30 @@ async function downloadImage(url, filePath) {
 // Helper function to extract image metadata using ImageMagick
 function getImageMetadata(imagePath) {
   return new Promise((resolve, reject) => {
-    exec(`identify -verbose ${imagePath}`, (error, stdout, stderr) => {
+    exec(`identify -format "%w×%h %[EXIF:*]" ${imagePath}`, (error, stdout, stderr) => {
       if (error) {
         console.error(`Error getting metadata: ${error.message}`);
-        return resolve({}); // Return empty object on error
+        return resolve({ dimensions: "unknown" }); // Return minimal object on error
       }
       
       // Parse the output to extract metadata
-      const metadata = {};
-      const lines = stdout.split('\n');
+      const metadata = { originalSize: "" };
       
-      lines.forEach(line => {
-        // Extract key-value pairs
-        const match = line.match(/^\s*(\w+):\s(.+)$/);
+      // Extract dimensions
+      const dimensionsMatch = stdout.match(/^(\d+)×(\d+)/);
+      if (dimensionsMatch) {
+        metadata.originalWidth = parseInt(dimensionsMatch[1], 10);
+        metadata.originalHeight = parseInt(dimensionsMatch[2], 10);
+        metadata.originalSize = `${metadata.originalWidth}×${metadata.originalHeight}`;
+        metadata.aspectRatio = (metadata.originalWidth / metadata.originalHeight).toFixed(2);
+      }
+      
+      // Extract other metadata
+      const exifData = stdout.replace(/^\d+×\d+ /, '');
+      const exifPairs = exifData.split(' ');
+      
+      exifPairs.forEach(pair => {
+        const match = pair.match(/([^=]+)=(.+)/);
         if (match && match.length >= 3) {
           const [, key, value] = match;
           metadata[key.trim()] = value.trim();
@@ -79,9 +90,14 @@ function getImageMetadata(imagePath) {
 }
 
 // Helper function to generate thumbnail using ImageMagick
-function generateThumbnail(imagePath, width, height, outputPath) {
+function generateThumbnail(imagePath, outputPath) {
   return new Promise((resolve, reject) => {
-    const command = `convert ${imagePath} -resize ${width}x${height} ${outputPath}`;
+    // Fixed thumbnail size of 150x150 pixels while preserving aspect ratio
+    // We use the ImageMagick resize option with ^ to ensure the image fills the dimensions
+    // and then we use extent with gravity center to crop to exactly 150x150
+    
+    // First approach: Resize to fit within 150x150 preserving aspect ratio
+    const command = `convert ${imagePath} -thumbnail 150x150 -background white -gravity center -extent 150x150 ${outputPath}`;
     
     exec(command, (error, stdout, stderr) => {
       if (error) {
@@ -99,10 +115,6 @@ app.post('/thumbnail', upload.single('image'), async (req, res) => {
   try {
     let imagePath;
     let tempFileCreated = false;
-    
-    // Get dimensions from request
-    const width = req.body.width || 300;
-    const height = req.body.height || 200;
     
     // Handle image from URL or file upload
     if (req.body.imageUrl) {
@@ -124,19 +136,31 @@ app.post('/thumbnail', upload.single('image'), async (req, res) => {
       return res.status(400).json({ error: 'Missing imageUrl or image file' });
     }
     
-    // Get metadata
+    // Get metadata including original dimensions
     const metadata = await getImageMetadata(imagePath);
     
-    // Generate thumbnail
+    // Generate thumbnail with fixed size 150x150
     const thumbName = `thumbnail-${path.basename(imagePath)}`;
     const thumbnailPath = path.join(path.dirname(imagePath), thumbName);
     
-    await generateThumbnail(imagePath, width, height, thumbnailPath);
+    await generateThumbnail(imagePath, thumbnailPath);
     
     // Read thumbnail file and convert to base64
     const thumbnailData = fs.readFileSync(thumbnailPath);
     const base64Thumbnail = thumbnailData.toString('base64');
     const thumbnailUrl = `data:image/jpeg;base64,${base64Thumbnail}`;
+    
+    // Also read original image and convert to base64 if not too large
+    let originalImageUrl = '';
+    if (metadata.originalWidth && metadata.originalHeight) {
+      const originalSize = metadata.originalWidth * metadata.originalHeight;
+      // Only include original image if it's not too large (less than 2 megapixels)
+      if (originalSize < 2000000) {
+        const originalData = fs.readFileSync(imagePath);
+        const base64Original = originalData.toString('base64');
+        originalImageUrl = `data:image/jpeg;base64,${base64Original}`;
+      }
+    }
     
     // Clean up temporary files
     if (tempFileCreated) {
@@ -147,7 +171,11 @@ app.post('/thumbnail', upload.single('image'), async (req, res) => {
     // Return response
     res.json({
       thumbnailUrl,
-      metadata
+      originalImageUrl: originalImageUrl || '',
+      metadata: {
+        ...metadata,
+        thumbnailSize: "150×150",
+      }
     });
     
   } catch (error) {
